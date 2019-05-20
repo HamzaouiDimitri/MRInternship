@@ -64,22 +64,22 @@ def model_eval(model, dataset_test, steps=50, **kwargs):
         f.write("Accuracy on clean images of "+model_name+" : {}  \n".format(np.round(acc_clean[1], 3)))
         f.close()
 
-def model_apply(model, dataset_test, name = "output.jpg", orientation = "vertical", font_path = "/usr/share/fonts/truetype/freefont/FreeMono.ttf", **kwargs):
+def model_apply(model, dataset_test, name = "output.jpg", orientation = "vertical", font_path = "/usr/share/fonts/truetype/freefont/FreeMono.ttf", prefix = "", **kwargs):
     model_name = model.name
-    if not os.path.isdir("./Check_"+model_name):
-        os.mkdir("./Check_"+model_name)
-    file_path = "./Check_"+model_name+"/"
+    if not os.path.isdir(prefix + "./Check_"+model_name):
+        os.mkdir(prefix + "./Check_"+model_name)
+    file_path = prefix + "./Check_"+model_name+"/"
     if dataset_test[-3:] == "csv":
-        pc_test = generators.Quadriview_DataGenerator(csv_file = dataset_test, **kwargs)
+        pc_test = generators.Quadriview_DataGenerator(csv_file = dataset_test, prefix = prefix, **kwargs)
     else:
-        pc_test = generators.Quadriview_DataGenerator(img_root_dir = dataset_test, **kwargs)
+        pc_test = generators.Quadriview_DataGenerator(img_root_dir = dataset_test, prefix = prefix, **kwargs)
     pc_test.metadata;
     y_pred = model.predict_generator(pc_test, steps = 1, verbose = 1, use_multiprocessing=True, workers = 20)
     print(y_pred.dtype)
     if dataset_test[-3:] == "csv":
-        pc_test = generators.Quadriview_DataGenerator(csv_file = dataset_test, **kwargs)
+        pc_test = generators.Quadriview_DataGenerator(csv_file = dataset_test, prefix = prefix, **kwargs)
     else:
-        pc_test = generators.Quadriview_DataGenerator(img_root_dir = dataset_test, **kwargs)
+        pc_test = generators.Quadriview_DataGenerator(img_root_dir = dataset_test, prefix = prefix, **kwargs)
     pc_test.metadata;
     y = pc_test.display(name = name, orientation = orientation, abs_pos = 155)
     y = np.argmax(y, axis = 1)
@@ -107,16 +107,16 @@ def model_apply(model, dataset_test, name = "output.jpg", orientation = "vertica
 
 def test_noise_characs(model, dataset_test, measure = ["RMS", "MSE", "Corr"], prefix = "", normalization = True):
     if dataset_test[-3:] == "csv":
-        tab = pd.read_csv(dataset_test, sep = ",", index_col = 0)
+        tab = pd.read_csv(prefix + dataset_test, sep = ",", index_col = 0)
     else:
-        tab = generate_df(dataset_test)
+        tab = generate_df(prefix + dataset_test)
     
     length = len(tab)
     XX = []
     model_name = model.name
-    if not os.path.isdir("./Check_"+model_name):
-        os.mkdir("./Check_"+model_name)
-    file_path = "./Check_"+model_name+"/"
+    if not os.path.isdir(prefix + "./Check_"+model_name):
+        os.mkdir(prefix + "./Check_"+model_name)
+    file_path = prefix +"./Check_"+model_name+"/"
     if type(measure) == str:
         measure = [measure]
     for k in tqdm(range(length)):
@@ -185,25 +185,25 @@ def test_noise_characs(model, dataset_test, measure = ["RMS", "MSE", "Corr"], pr
 
         plt.savefig(file_path+model_name+"_"+meas+".png")
 
-def test_slice(model, dataset_test, num_choices = 40, normalization = True):
+def test_slice(model, dataset_test, num_choices = 40, normalization = True, prefix = ""):
     if dataset_test[-3:] == "csv":
-        csv = pd.read_csv(dataset_test, sep = ",", index_col = 0)
+        csv = pd.read_csv(prefix + dataset_test, sep = ",", index_col = 0)
     else:
-        csv = generate_df(dataset_test)
+        csv = generate_df(prefix + dataset_test)
     ind_not_noised = np.random.choice(np.where(csv.noise.values == 1)[0], num_choices)
     ind_small_RMS = np.random.choice(np.where((csv.noise.values == 0) & (csv.RMS.values < 10))[0], num_choices)
     ind_med_RMS = np.random.choice(np.where((csv.noise.values == 0) & (csv.RMS.values > 10) & (csv.RMS.values < 20))[0], num_choices)
     ind_big_RMS = np.random.choice(np.where((csv.noise.values == 0) & (csv.RMS.values > 20))[0], num_choices)
     if normalization:
-        not_noised_images = np.array([normalization_func(nb.load(csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_not_noised)])
-        small_RMS_images = np.array([normalization_func(nb.load(csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_small_RMS)])
-        med_RMS_images = np.array([normalization_func(nb.load(csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_med_RMS)])
-        big_RMS_images = np.array([normalization_func(nb.load(csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_big_RMS)])
+        not_noised_images = np.array([normalization_func(nb.load(prefix +csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_not_noised)])
+        small_RMS_images = np.array([normalization_func(nb.load(prefix +csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_small_RMS)])
+        med_RMS_images = np.array([normalization_func(nb.load(prefix +csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_med_RMS)])
+        big_RMS_images = np.array([normalization_func(nb.load(prefix +csv.iloc[k].img_file).get_fdata()) for k in tqdm(ind_big_RMS)])
     else:
-        not_noised_images = np.array([nb.load(csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_not_noised)])
-        small_RMS_images = np.array([nb.load(csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_small_RMS)])
-        med_RMS_images = np.array([nb.load(csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_med_RMS)])
-        big_RMS_images = np.array([nb.load(csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_big_RMS)])
+        not_noised_images = np.array([nb.load(prefix + csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_not_noised)])
+        small_RMS_images = np.array([nb.load(prefix +csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_small_RMS)])
+        med_RMS_images = np.array([nb.load(prefix +csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_med_RMS)])
+        big_RMS_images = np.array([nb.load(prefix +csv.iloc[k].img_file).get_fdata() for k in tqdm(ind_big_RMS)])
     shape_im = not_noised_images[0].shape
     sag_slice = int(0.5*shape_im[0])    
     cor_slice = int(0.5*shape_im[1])
@@ -355,9 +355,9 @@ def test_slice(model, dataset_test, num_choices = 40, normalization = True):
 
 
     model_name = model.name
-    if not os.path.isdir("./Check_"+model_name):
-        os.mkdir("./Check_"+model_name)
-    file_path = "./Check_"+model_name+"/"
+    if not os.path.isdir(prefix + "./Check_"+model_name):
+        os.mkdir(prefix + "./Check_"+model_name)
+    file_path = prefix + "./Check_"+model_name+"/"
     plt.savefig(file_path+model_name+"_slice_pos_impact.jpg")
     
     
