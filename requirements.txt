@@ -24,6 +24,7 @@ jupyter-core==4.4.0
 Keras==2.2.4
 Keras-Applications==1.0.7
 Keras-Preprocessing==1.0.9
+keras-vis = 0.4.1
 kiwisolver==1.1.0
 Markdown==3.1
 MarkupSafe==1.1.1
