@@ -2,6 +2,10 @@ import operator
 import numpy as np
 import keras_preprocessing.image.affine_transformations as at
 import scipy.ndimage as ndi
+import subprocess
+import nibabel as nb
+import os
+from time import sleep
 
 operator_dict = {
     '==': operator.eq,
@@ -97,7 +101,37 @@ def transfo_imgs(image, args, mode): # Types of transformations and range inspir
         
 def normalization_func(img):
     vmin, vmax = img.min(), img.max()
-    im = (img - vmin)/(vmax - vmin)
+    if vmin != vmax:
+        im = (img - vmin)/(vmax - vmin)
+    else:
+        im = np.ones(img.shape)
     return im
 
+def normalization_mask(img, mask):
+    zone1 = img[mask != 0]
+    zone2 = img[mask == 0]
+    zone1 = (zone1 - zone1.min())/(zone1.max() - zone1.min())
+    zone2 = (zone2 - zone2.min())/(zone2.max() - zone2.min())
+    imge = img.copy()
+    imge[mask != 0] = zone1
+    imge[mask == 0] = zone2
+    return imge
+    
+def normalization_brain(img, mask):
+    zone1 = img[mask != 0]
+    imge = img.copy()
+    imge[mask != 0] = (zone1 - zone1.min())/(zone1.max() - zone1.min())
+    imge[mask == 0] = 0
+    return imge
 
+def normalization_fsl(img, ID, prefix, metadata, nbb, idw):
+    file_path = prefix + metadata.iloc[ID].img_file
+    temp1 = [pos for pos, char in enumerate(metadata.iloc[ID].img_file) if char == "/"][-1]
+    temp2 = [pos for pos, char in enumerate(metadata.iloc[ID].img_file) if metadata.iloc[ID].img_file[pos:pos+4]==".nii"][-1]   
+    name = (metadata.iloc[ID].img_file)[temp1+1:temp2]+"_id_"+str(nbb)+"_idw_"+str(idw)
+    p = subprocess.Popen(['bet',file_path, prefix+name+".nii.gz"])
+    p.wait()
+    mask = nb.load(prefix+name+".nii.gz").get_fdata()
+    os.remove(prefix+name+".nii.gz")
+    imge = normalization_mask(img, mask)
+    return imge

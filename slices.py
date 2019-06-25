@@ -20,13 +20,16 @@ import os
 def reslice_im(im, fref, acoreg, type_pos):
     """
     Takes as an input an image and a template, and return the resample of the first input
-    in the space linked to the template, with the following rates:
+    in the sp
+    ace linked to the template, with the following rates:
         *percentage of output space in the intersection
         *percentage of input space in the intersection
     """
     
     print(type_pos != "mm")
-    if type_pos != "mm":
+    #if type_pos != "mm":
+    if type_pos == "mm_mni":
+        print('changing the image affine before resamping')
         imgaff = acoreg.dot(im.affine)
         im.affine[:] = imgaff[:]
     out_img = npi.resample_from_to(im, fref, cval=-1)
@@ -41,7 +44,7 @@ def reslice_mask(mask, fref, acoreg, type_pos):
             maskaff = acoreg.dot(mask.affine)
             mask.affine[:] = maskaff[:]
         out_mask_temp = npi.resample_from_to(mask, fref, cval=0)
-        out_mask = nb.Nifti1Image(np.round(out_mask_temp.get_fdata(), decimals = 0), affine=out_mask_temp.affine) 
+        out_mask = nb.Nifti1Image(np.round(out_mask_temp.get_fdata(), decimals = 0), affine=out_mask_temp.affine) #rrr ???
     return out_mask
 
 # %%
@@ -56,14 +59,14 @@ def get_slices(im, mask, acoreg, view, type_pos, pos, mask_cut_pix=-1): # Ajoute
     and return the extracted slice (recut aroud the mask or not) and the whole slice of mask
 
     """
-    list_type = ["vox", "mm", "mm_mni"]
+    list_type = ["vox", "voxmm", "mm", "mm_mni"]
     list_view = ["sag", "cor", "ax"]
     if type_pos not in list_type:
         raise ValueError("Type_pos input not recognized among the accepted type_pos inputs")
     if view not in list_view:
         raise ValueError("View input not recognized among the accepted view inputs")
-    if fref is None and type_pos == "mm":
-        raise  AssertionError("Trying to use mm view with no fref")
+ #   if fref is None and type_pos == "mm":
+ #       raise  AssertionError("Trying to use mm view with no fref")
     if acoreg is None and type_pos == "mm_mni":
         raise AssertionError("Trying to use mm_mni view with no acoreg")
     
@@ -76,14 +79,22 @@ def get_slices(im, mask, acoreg, view, type_pos, pos, mask_cut_pix=-1): # Ajoute
         if pos < 0 or pos >= 1:
             raise ValueError("The vox type expects a percentage 0 < pos < 1")
         pos_var = int(pos * max_dim)
+
     else:
+
+        if type_pos == "voxmm":
+            # imgaff = acoreg.dot(im.affine)
+            mat_affine = np.linalg.inv(acoreg.dot(im.affine))
+        else :
+            mat_affine = np.linalg.inv(im.affine)
+
         pos_vect = np.zeros((4,))
         pos_vect[-1] = 1
         pos_vect[list_view.index(view)] = pos
-        axis = np.dot(np.linalg.inv(im.affine), pos_vect).astype("int")
+        axis = np.dot(mat_affine, pos_vect).astype("int")
         pos_var = axis[list_view.index(view)]
         if (pos_var) >= max_dim or pos_var <0:
-            raise ValueError("The value given is out of the possible values of the image ")
+            raise ValueError("The value given is out of the possible values of the image: %d mm correspond to slice %d "%(pos,pos_var))
     
     if view == "sag":
         matrix_slice = image[pos_var, :, :]
@@ -150,7 +161,7 @@ def scaling_func(im, mask, scaling, scaling_values):
 
 # %%
 
-def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = True, colormap = cm.Greys_r, 
+def generate_figures(l_in, slices_infos=None, mask_info=None, fref = None, display_order=None, ras = True, colormap = cm.Greys_r,
                      colormap_noise=cm.hot, scaling_values = [0,100], figsize = (20,20)):
     """
     Takes as inputs:
@@ -165,7 +176,8 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
         A size parameter
         
     And produces for each image as input an image (in png) composed of the differents views wanted (produced in the folder 
-    computed_images) and a histogram (in the file histogram) giving the repartition of the values on the mask 
+    computed_images) and a histogram (in the file histogram) giving the repartition of the values on the mask.
+    The final figure is filled from the top to the bottom and from the left to the right (column 1 then column 2...)
     """
     
     if not os.path.exists("histogramme"):
@@ -183,12 +195,12 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
         raise AssertionError("The 2 lists about the slices must have the same size")
     
     if ras and fref is not None and nb.aff2axcodes(fref.affine) != ('R', 'A', 'S'):
+        print('changing reference affine to canonical ... ')
         fref = nb.as_closest_canonical(fref)
         
     use_reslice_mm = (np.array([slices_infos[k][1] for k in range(len(slices_infos))]) == "mm").any()
     use_reslice_mni = (np.array([slices_infos[k][1] for k in range(len(slices_infos))]) == "mm_mni").any()
 
-    
     
     for i, item in enumerate(l_in):
         im, mask, acoreg = item
@@ -201,6 +213,7 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
             raise TypeError("im of incorrect type for case {}".format(i))
         
         if ras and nb.aff2axcodes(im.affine) != ('R', 'A', 'S'):
+            print('changing image affine to canonical ... ')
             im = nb.as_closest_canonical(im)
         
         if isinstance(mask, str):
@@ -212,9 +225,12 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
         
         if ras and mask is not None and nb.aff2axcodes(mask.affine) != ('R', 'A', 'S'):
             mask = nb.as_closest_canonical(mask)
-        
+
+        ##rrr should had a test to check dimention of mask and images is matching
+
         if isinstance(acoreg, str):
-            acoreg = np.loadtxt(acoreg)
+            acoreg = np.loadtxt(acoreg,delimiter=' ')
+            acoreg = np.linalg.inv(acoreg)
         elif (isinstance(acoreg, np.ndarray)):
             acoreg = acoreg
         else:
@@ -231,6 +247,10 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
         if mask is not None:
             plt.hist(im.get_fdata()[mask.get_fdata().astype(bool)].ravel(), bins = 200)
             plt.savefig("histogramme/histogramme_"+str(i)+".png")
+        else :
+            plt.hist(im.get_fdata().ravel(), bins = 200)
+            plt.savefig("histogramme/histo_all_"+str(i)+".png")
+
         list_matrix = []
         
         for j, item2 in enumerate(slices_infos):
@@ -240,7 +260,7 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
                 print("For a empty mask, the scaling must be whole and we must not do the cut!")
                 scaling = "whole"
                 mask_cut_pix = -1
-            if type_pos == "vox":
+            if type_pos == "vox" or type_pos == "voxmm":
                 temp_im = im
                 temp_mask = mask
             elif type_pos == "mm":
@@ -254,14 +274,11 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
             v_min, v_max, v_min_f, v_max_f = scaling_func(temp_im, temp_mask, scaling, scaling_values)
             matrix_slice, mask_slice = get_slices(temp_im, temp_mask, acoreg, view, type_pos, pos, mask_cut_pix)
             list_matrix.append((matrix_slice, mask_slice,v_min, v_max, v_min_f, v_max_f))
-            
-        tab_abs = np.array([[list_matrix[i*display_order[1]+k][0].shape[1] for k in range(display_order[1]) ] for i in range(display_order[0])])
-        tab_ord = np.array([[list_matrix[i*display_order[1]+k][0].shape[0] for k in range(display_order[1]) ] for i in range(display_order[0])])
-        
-        
-        abs_max= np.max(np.sum(tab_abs, axis = 1))
-        ord_max = np.max(np.sum(tab_ord, axis = 0))
-        figure = np.zeros((abs_max, ord_max, 4)).astype(np.uint8)
+
+        abs_max= np.max([m[0].shape[1] for m in list_matrix])
+        ord_max= np.max([m[0].shape[0] for m in list_matrix])
+
+        figure = np.zeros((display_order[1]*abs_max, display_order[0]*ord_max, 4)).astype(np.uint8)
         curseur_abs = 0
         curseur_ord=0
         for j, item in enumerate(list_matrix):
@@ -269,29 +286,32 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
             if mask_info[j][0] != "mask_font":
                 temp = (np.uint8(255*(colormap(matrix_slice.T/(v_max - v_min))).astype(np.float64)))
                 figure[curseur_abs:curseur_abs+temp.shape[0],
-                      curseur_ord:curseur_ord+temp.shape[1]]= temp
+                      curseur_ord:curseur_ord+temp.shape[1]]= np.flipud(temp)
                       
             else:
                 temp = (np.uint8(255*
                      (colormap_noise((matrix_slice.T/(v_max_f - v_min_f) * np.logical_not(mask_slice).T).astype(np.float64))
                      +(colormap((matrix_slice/(v_max - v_min) * mask_slice).T).astype(np.float64)))))
                 figure[curseur_abs: curseur_abs+temp.shape[0],
-                      curseur_ord:curseur_ord+temp.shape[1]] = temp
+                      curseur_ord:curseur_ord+temp.shape[1]] = np.flipud(temp)
             if (j+1)%display_order[1] == 0:
                 curseur_abs = 0
-                curseur_ord += np.max(tab_ord[j//display_order[1],:])
-            else:
-                curseur_abs += temp.shape[0]
+                curseur_ord += ord_max
+            else:din = din.iloc[0]
+                curseur_abs += abs_max
                      
         #figure=np.transpose(figure, (0,1,2))
         #fig.tight_layout()
-        #plt.subplots_adjust(wspace=0, hspace=0, left=0.0, right=1.0, bottom=0.0, top=1.0)
+        plt.subplots_adjust(wspace=0, hspace=0, left=0.0, right=1.0, bottom=0.0, top=1.0)
         fig, axs = plt.subplots(1,1,figsize = (40, 40))
-        axs.imshow(figure, origin = "lower")
+        axs.imshow(figure)#, origin = "lower")
+        #for k in range(display_order[1]):
+        #    plt.plot((k*display_order[1], 0), (y1, y2), 'k-')
         axs.axis("off")
-        fig.savefig("computed_images/output_file_"+str(i)+".png",   facecolor ="k", bbox_inches='tight')
+        fig.savefig("computed_images/fig_"+str(i)+".png",   facecolor ="k", bbox_inches='tight')
         print("Done for figure "+str(i))
-        return figure
+
+    return figure
 
 
 
@@ -299,28 +319,56 @@ def generate_figures(l_in, slices_infos, mask_info, fref, display_order, ras = T
 from time import time
 
 if __name__ == "__main__":
-    # file_1 = "./Documents/ms_S02_t1mpr_SAG_NSel_S176.nii.gz"
-    # file_2 = "./Documents/ms_S18_t1mpr_SAG_NSel_S176.nii.gz"
-    #template = "./Documents/s_S02_t1mpr_SAG_NSel_S176.nii.gz"
-    # file_test_size = "./Documents/T1_2mm.nii.gz"
-    #sag_1 = "./Documents/T1_sag.nii"
-    #sag_2 = "./Documents/T1_sag2.nii"
-    #sag_3 = "./Documents/T1_sag_std.nii"
-    #sag_4 = "./Documents/T1_sag2_std.nii"
-    #test_1 = "./Documents/s_S02_T1_mpr_TRA_SSel_BW240.nii.gz"
-    #mask_1 = "./Documents/mask_head.nii.gz"
-    #test_1 = nb.load("/home/dimitri.hamzaoui/Documents/cat12/nr_ms_S10_t1mpr_SAG_NSel_S176_to_Mean_S50_all.nii.gz")
-    test_1 = nb.load("/home/dimitri.hamzaoui/Documents/cat12/ms_S10_t1mpr_SAG_NSel_S176.nii.gz")
+
     #mask_1 = nb.load("/home/dimitri.hamzaoui/Documents/cat12/nr_mask_brain_erode_dilate.nii.gz")
-    fref = nb.load('./data_QC/mni/tpl_mni_aff/mean_rmni1Kcrop.nii.gz')
-    acoreg_inv = np.loadtxt("./Documents/cat12/aff_nr_ms_S10_t1mpr_SAG_NSel_S176_to_Mean_S50_all.txt",delimiter=' ')
-    acoreg = np.linalg.inv(acoreg_inv)
+    #fref = nb.load('./data_QC/mni/tpl_mni_aff/mean_rmni1Kcrop.nii.gz')
+    #acoreg_inv = np.loadtxt("./Documents/cat12/aff_nr_ms_S10_t1mpr_SAG_NSel_S176_to_Mean_S50_all.txt",delimiter=' ')
+    #acoreg = np.linalg.inv(acoreg_inv)
     
-    l_in = [(test_1 , None, acoreg)]
-    l_view = [("sag", "mm", 0), ("sag", "mm_mni", 0)]
-    mask_info = [("whole", -1), ("whole", -1)]
-    display_order = np.array([1, 2]) 
+    #l_in = [(test_1 , None, acoreg)]
+    #l_view = [("sag", "mm", 0), ("sag", "mm_mni", 0)]
+    #mask_info = [("whole", -1), ("whole", -1), ("whole", -1)]
+    #display_order = np.array([1, 2])
+    #t0 = time()
+    #fig = generate_figures(l_in, slices_infos=l_view, mask_info=mask_info, display_order=display_order, fref = fref, figsize = (10, 10))
+    #print("Il a fallu {} secondes".format(np.round(time()-t0, 2)))
+    #plt.imshow(fig, origin = "lower")
+
+    #rrr
+    import pandas as pd
+    import utils_file as uf
+    import importlib
+    importlib.reload(uf)
+
+    ds = pd.read_csv('/network/lustre/iss01/cenir/analyse/irm/users/romain.valabregue/dicom/res/res_cat12seg_18999.csv')
+    rootdir = '/network/lustre/iss01/scratch/CENIR/users/romain.valabregue/dicom/nifti_proc'
+
+    ind_sel = np.random.randint(0,ds.shape[0],2)
+    din = ds.iloc[ind_sel,1] #[ds.iloc[ii,1] for ii in ind_sel]
+    magie = din.tolist()
+    for k in range(2):
+        magie[k] = "/network/lustre/iss01" + magie[k]
+    fin = uf.gfile(magie ,'^s.*nii')
+
+    faff = uf.gfile(magie ,'^aff.*txt')
+    l_view=[("sag", "mm", 0) for i in range(0,3,1)]
+    l_view = [("sag", "vox", 0.5),("sag", "mm", 0),("sag", "mm_mni", 0),
+              ("ax", "vox", 0.5), ("ax", "mm", 0), ("ax", "mm_mni", 0),
+              ("cor", "vox", 0.5), ("cor", "mm", 0), ("cor", "mm_mni", 0),]
+
+    l_view = [("sag", "vox", 0.5), ("sag", "voxmm", -32), ("sag", "mm", -32), ("sag", "mm_mni", -32),
+              ("ax", "vox", 0.5),  ("ax", "voxmm", -43),  ("ax", "mm", -43),  ("ax", "mm_mni", -43),
+              ("cor", "vox", 0.5), ("cor", "voxmm", 54),  ("cor", "mm", 54),  ("cor", "mm_mni", 54),]
+
+    mask_info = [("whole", -1) for i in range(0,12,1)]
+    display_order =  np.array([3,4]) # row and column of the montage
+
+    fref=nb.load('/network/lustre/iss01/cenir/analyse/irm/users/romain.valabregue/dicom/mni/tpl_mni_aff/mean_rmni1Kcrop.nii.gz')
+
+    fmask = [None for i in range(0,3,1)]
+    l_in = uf.concatenate_list([fin,fmask,faff])
+
     t0 = time()
     fig = generate_figures(l_in, slices_infos=l_view, mask_info=mask_info, display_order=display_order, fref = fref, figsize = (10, 10))
     print("Il a fallu {} secondes".format(np.round(time()-t0, 2)))
-    #plt.imshow(fig, origin = "lower")
+
